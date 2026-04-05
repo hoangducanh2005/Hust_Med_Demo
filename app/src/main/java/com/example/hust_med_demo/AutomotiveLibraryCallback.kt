@@ -1,5 +1,4 @@
 package com.example.hust_med_demo
-// đã chạy được
 
 import android.net.Uri
 import androidx.annotation.OptIn
@@ -18,57 +17,64 @@ import com.google.common.util.concurrent.ListenableFuture
 @OptIn(UnstableApi::class)
 class AutomotiveLibraryCallback : MediaLibraryService.MediaLibrarySession.Callback {
 
-    // Tạo đường dẫn tới fil nhạc trong res
+    private val pkg = "com.example.hust_med_demo"
+
+    // Khởi tạo đường dẫn URI tới file nhạc trong res/raw
     private val uri1 = RawResourceDataSource.buildRawResourceUri(R.raw.kiep_ve_sau)
     private val uri2 = RawResourceDataSource.buildRawResourceUri(R.raw.hoa_hong)
     private val uri3 = RawResourceDataSource.buildRawResourceUri(R.raw.con_mua_tinh_yeu)
+    private val uri4 = RawResourceDataSource.buildRawResourceUri(R.raw.mot_minh_mot_som_ban_mai)
+    private val uri5 = RawResourceDataSource.buildRawResourceUri(R.raw.thang_tu_la_loi_noi_doi_cua_em)
 
-//    mediaId  →  file thật (URI)
+    // Khởi tạo đường dẫn URI tới ảnh bìa trong res/drawable
+    private val art1 = Uri.parse("android.resource://$pkg/drawable/art_kiep_ve_sau")
+    private val art2 = Uri.parse("android.resource://$pkg/drawable/art_hoa_hong")
+    private val art3 = Uri.parse("android.resource://$pkg/drawable/art_con_mua_tinh_yeu")
+    private val art4 = Uri.parse("android.resource://$pkg/drawable/art_mot_minh_mot_som_ban_mai")
+    private val art5 = Uri.parse("android.resource://$pkg/drawable/art_thang_tu_la_loi_noi_doi_cua_em")
+
+    // Map mediaId -> URI file nhạc thật
     private val tracks: Map<String, Uri> = mapOf(
         "track_1" to uri1,
         "track_2" to uri2,
-        "track_3" to uri3
+        "track_3" to uri3,
+        "track_4" to uri4,
+        "track_5" to uri5
     )
-//    Hiển thị items lên màn
-    private val items = listOf(
-        MediaItem.Builder()
-            .setMediaId("track_1") //UI chỉ thấy MediaID, không thấy Uri thật => map mediaID->uri để UI nhận diện và hiển thị trước
-            .setUri(uri1)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle("Kiếp Ve Sầu")
-                    .setArtist("Đan Trường")
-                    .setIsBrowsable(false)
-                    .setIsPlayable(true)
-                    .build()
-            )
 
-            .build(),
-        MediaItem.Builder()
-            .setMediaId("track_2")
-            .setUri(uri2)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle("Hoa Hồng")
-                    .setArtist("Hà Anh Tuấn")
-                    .setIsBrowsable(false)
-                    .setIsPlayable(true)
-                    .build()
-            )
+    // Map mediaId -> URI ảnh bìa
+    private val artworks: Map<String, Uri> = mapOf(
+        "track_1" to art1,
+        "track_2" to art2,
+        "track_3" to art3,
+        "track_4" to art4,
+        "track_5" to art5
+    )
 
-            .build(),
-        MediaItem.Builder()
-            .setMediaId("track_3")
-            .setUri(uri3)
+    // Hàm helper để tạo MediaItem
+    private fun createMediaItem(id: String, title: String, artist: String, mediaUri: Uri, artworkUri: Uri): MediaItem {
+        return MediaItem.Builder()
+            .setMediaId(id)
+            .setUri(mediaUri)
             .setMediaMetadata(
                 MediaMetadata.Builder()
-                    .setTitle("Cơn Mưa Tình Yêu")
-                    .setArtist("Hà Anh Tuấn")
-                    .setIsBrowsable(false)
+                    .setTitle(title)
+                    .setArtist(artist)
+                    .setArtworkUri(artworkUri) // Thiết lập ảnh bìa
+                    .setIsBrowsable(false) //// Đây o là 1 folder, ko thể browse ( nó là node con )
                     .setIsPlayable(true)
                     .build()
             )
             .build()
+    }
+
+    // Danh sách hiển thị lên màn hình
+    private val items = listOf( // dùng hàm createMediaItem nhanh hơn khai báo từng bài code cũ
+        createMediaItem("track_1", "Kiếp Ve Sầu", "Đan Trường", uri1, art1),
+        createMediaItem("track_2", "Hoa Hồng", "Hà Anh Tuấn", uri2, art2),
+        createMediaItem("track_3", "Cơn Mưa Tình Yêu", "Hà Anh Tuấn", uri3, art3),
+        createMediaItem("track_4", "Một mình một sớm ban mai", "Hà Anh Tuấn", uri4, art4),
+        createMediaItem("track_5", "Tháng tư là lời nói dối của em", "Hà Anh Tuấn", uri5, art5)
     )
 
     override fun onGetLibraryRoot(
@@ -77,12 +83,12 @@ class AutomotiveLibraryCallback : MediaLibraryService.MediaLibrarySession.Callba
         params: MediaLibraryService.LibraryParams?
     ): ListenableFuture<LibraryResult<MediaItem>> {
         val root = MediaItem.Builder()
-            .setMediaId("root") //id cho gốc
+            .setMediaId("root")
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle("My Media")
-                    .setIsBrowsable(true) // Đây là 1 folder, có thể truy cập xem nd
-                    .setIsPlayable(false) // 1 folder nên không phát trực tiếp được
+                    .setIsBrowsable(true)
+                    .setIsPlayable(false)
                     .build()
             )
             .build()
@@ -115,19 +121,20 @@ class AutomotiveLibraryCallback : MediaLibraryService.MediaLibrarySession.Callba
         return Futures.immediateFuture(LibraryResult.ofItemList(ImmutableList.copyOf(children), params))
     }
 
-    // Quan trọng nhất
     override fun onAddMediaItems(
         session: MediaSession,
         controller: MediaSession.ControllerInfo,
         mediaItems: MutableList<MediaItem>
     ): ListenableFuture<MutableList<MediaItem>> {
         val resolved = mediaItems.map { item ->
-            val uri = tracks[item.mediaId] // Map mediaID -> uri - Item hiển thị -> item để phát
+            val uri = tracks[item.mediaId] //Map mediaID -> uri - Item hiển thị -> item để phát
+            val art = artworks[item.mediaId]
             if (uri != null) {
                 item.buildUpon()
                     .setUri(uri)
                     .setMediaMetadata(
                         item.mediaMetadata.buildUpon()
+                            .setArtworkUri(art) // Gắn ảnh bìa khi phát
                             .setIsPlayable(true)
                             .setIsBrowsable(false)
                             .build()
@@ -140,13 +147,12 @@ class AutomotiveLibraryCallback : MediaLibraryService.MediaLibrarySession.Callba
         return Futures.immediateFuture(resolved)
     }
 
-    //thông tin songs
     override fun onGetItem(
         session: MediaLibraryService.MediaLibrarySession,
         browser: MediaSession.ControllerInfo,
         mediaId: String
     ): ListenableFuture<LibraryResult<MediaItem>> {
-        val item = items.firstOrNull { it.mediaId == mediaId } // MediaID -> Uri
+        val item = items.firstOrNull { it.mediaId == mediaId }
         return Futures.immediateFuture(
             if (item != null) {
                 LibraryResult.ofItem(item, null)
@@ -156,7 +162,6 @@ class AutomotiveLibraryCallback : MediaLibraryService.MediaLibrarySession.Callba
         )
     }
 
-    //đki theo dõi dlieu
     override fun onSubscribe(
         session: MediaLibraryService.MediaLibrarySession,
         browser: MediaSession.ControllerInfo,
