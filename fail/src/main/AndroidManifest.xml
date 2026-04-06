@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--    To indicate that your app supports Android Automotive OS devices-->
+    <uses-feature
+        android:name="android.hardware.type.automotive"
+        android:required="false" />
+    <!--       false makes it possible for the generated APK or App Bundle -->
+    <!--        to be distributed both to Android Automotive OS devices and to mobile devices.-->
+    <!--        true means only automotive devices &ndash;&gt;-->
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.RoadReels"
+        android:appCategory="video"
+        tools:targetApi="34">
+        <activity
+            android:name="com.example.android.cars.roadreels.MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.RoadReels"
+            android:resizeableActivity="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
+
+    <!--    android:appCategory="video"  =    declare it is video-->

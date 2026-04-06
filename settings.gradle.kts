@@ -24,4 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Hust_Med_Demo"
 include(":app")
- 
+include(":fail")
