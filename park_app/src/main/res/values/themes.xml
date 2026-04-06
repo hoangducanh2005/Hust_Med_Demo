@@ -1,0 +1,4 @@
+<resources>
+
+    <style name="Theme.Hust_Med_Demo" parent="android:Theme.Material.Light.DarkActionBar" />
+</resources>
