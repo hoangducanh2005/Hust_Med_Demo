@@ -71,6 +71,7 @@ Playback state is synchronized with the AAOS system UI
 🔐 Required Permissions
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
 🚗 Automotive Requirement
 <uses-feature
     android:name="android.hardware.type.automotive"
