@@ -1,6 +1,7 @@
 package com.example.hust_med_demo
 
 import android.net.Uri
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -14,12 +15,13 @@ import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 
+private const val TAG = "HUST_VOICE"
+
 @OptIn(UnstableApi::class)
 class AutomotiveLibraryCallback : MediaLibraryService.MediaLibrarySession.Callback {
 
     private val pkg = "com.example.hust_med_demo"
 
-    // Khởi tạo đường dẫn URI tới file nhạc trong res/raw
     private val uri1 = RawResourceDataSource.buildRawResourceUri(R.raw.kiep_ve_sau)
     private val uri2 = RawResourceDataSource.buildRawResourceUri(R.raw.hoa_hong)
     private val uri3 = RawResourceDataSource.buildRawResourceUri(R.raw.con_mua_tinh_yeu)
@@ -32,7 +34,6 @@ class AutomotiveLibraryCallback : MediaLibraryService.MediaLibrarySession.Callba
     private val uri10 = RawResourceDataSource.buildRawResourceUri(R.raw.loveyourself)
     private val uri11 = RawResourceDataSource.buildRawResourceUri(R.raw.aslongasyouloveme)
 
-    // Khởi tạo đường dẫn URI tới ảnh bìa trong res/drawable
     private val art1 = Uri.parse("android.resource://$pkg/drawable/art_kiep_ve_sau")
     private val art2 = Uri.parse("android.resource://$pkg/drawable/art_hoa_hong")
     private val art3 = Uri.parse("android.resource://$pkg/drawable/art_con_mua_tinh_yeu")
@@ -45,38 +46,13 @@ class AutomotiveLibraryCallback : MediaLibraryService.MediaLibrarySession.Callba
     private val art10 = Uri.parse("android.resource://$pkg/drawable/loveyourself")
     private val art11 = Uri.parse("android.resource://$pkg/drawable/aslongasyouloveme")
 
-    // Map mediaId -> URI file nhạc thật
-    private val tracks: Map<String, Uri> = mapOf(
-        "track_1" to uri1,
-        "track_2" to uri2,
-        "track_3" to uri3,
-        "track_4" to uri4,
-        "track_5" to uri5,
-        "track_6" to uri6,
-        "track_7" to uri7,
-        "track_8" to uri8,
-        "track_9" to uri9,
-        "track_10" to uri10,
-        "track_11" to uri11
-    )
-
-    // Map mediaId -> URI ảnh bìa
-    private val artworks: Map<String, Uri> = mapOf(
-        "track_1" to art1,
-        "track_2" to art2,
-        "track_3" to art3,
-        "track_4" to art4,
-        "track_5" to art5,
-        "track_6" to art6,
-        "track_7" to art7,
-        "track_8" to art8,
-        "track_9" to art9,
-        "track_10" to art10,
-        "track_11" to art11
-    )
-
-    // Hàm helper để tạo MediaItem
-    private fun createMediaItem(id: String, title: String, artist: String, mediaUri: Uri, artworkUri: Uri): MediaItem {
+    private fun createMediaItem(
+        id: String,
+        title: String,
+        artist: String,
+        mediaUri: Uri,
+        artworkUri: Uri
+    ): MediaItem {
         return MediaItem.Builder()
             .setMediaId(id)
             .setUri(mediaUri)
@@ -84,16 +60,15 @@ class AutomotiveLibraryCallback : MediaLibraryService.MediaLibrarySession.Callba
                 MediaMetadata.Builder()
                     .setTitle(title)
                     .setArtist(artist)
-                    .setArtworkUri(artworkUri) // Thiết lập ảnh bìa
-                    .setIsBrowsable(false) //// Đây o là 1 folder, ko thể browse ( nó là node con )
+                    .setArtworkUri(artworkUri)
+                    .setIsBrowsable(false)
                     .setIsPlayable(true)
                     .build()
             )
             .build()
     }
 
-    // Danh sách hiển thị lên màn hình
-    private val items = listOf( // dùng hàm createMediaItem nhanh hơn khai báo từng bài code cũ
+    private val items = listOf(
         createMediaItem("track_1", "Kiếp Ve Sầu", "Đan Trường", uri1, art1),
         createMediaItem("track_2", "Hoa Hồng", "Hà Anh Tuấn", uri2, art2),
         createMediaItem("track_3", "Cơn Mưa Tình Yêu", "Hà Anh Tuấn", uri3, art3),
@@ -107,21 +82,132 @@ class AutomotiveLibraryCallback : MediaLibraryService.MediaLibrarySession.Callba
         createMediaItem("track_11", "As Long As You Love Me", "Justin Bieber", uri11, art11)
     )
 
+    private fun normalizeQuery(query: String?): String {
+        return query.orEmpty()
+            .lowercase()
+            .replace("hust_med_demo", "")
+            .replace("hust med demo", "")
+            .replace("hust media", "")
+            .replace("play", "")
+            .replace("listen to", "")
+            .replace("song", "")
+            .replace("music", "")
+            .replace("on", "")
+            .trim()
+    }
+
+    private fun findSongs(query: String?): List<MediaItem> {
+        val normalized = normalizeQuery(query)
+        Log.d(TAG, "findSongs(): raw=[$query], normalized=[$normalized]")
+
+        if (normalized.isBlank()) return emptyList()
+
+        val titleMatches = items.filter {
+            it.mediaMetadata.title?.toString()?.lowercase()?.contains(normalized) == true
+        }
+        if (titleMatches.isNotEmpty()) return titleMatches
+
+        return items.filter {
+            it.mediaMetadata.artist?.toString()?.lowercase()?.contains(normalized) == true
+        }
+    }
+
+    private fun defaultItem(): MediaItem {
+        return items.first()
+    }
+
+    private fun resolveVoiceRequest(item: MediaItem): MediaItem {
+        val query = item.requestMetadata.searchQuery?.toString()
+        val mediaId = item.mediaId
+
+        Log.d(TAG, "resolveVoiceRequest(): mediaId=[$mediaId], searchQuery=[$query]")
+
+        if (!query.isNullOrBlank()) {
+            val matches = findSongs(query)
+            if (matches.isNotEmpty()) {
+                Log.d(TAG, "Matched voice query [$query] -> ${matches[0].mediaMetadata.title}")
+                return matches[0]
+            }
+
+            Log.d(TAG, "No match for query [$query], fallback to default item")
+            return defaultItem()
+        }
+
+        val byId = items.find { it.mediaId == mediaId }
+        if (byId != null) {
+            Log.d(TAG, "Matched by mediaId [$mediaId] -> ${byId.mediaMetadata.title}")
+            return byId
+        }
+
+        if (item.localConfiguration?.uri != null) {
+            Log.d(TAG, "Item already has playable URI")
+            return item
+        }
+
+        Log.d(TAG, "No query/mediaId/URI, fallback to default item")
+        return defaultItem()
+    }
+
+    override fun onAddMediaItems(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        mediaItems: MutableList<MediaItem>
+    ): ListenableFuture<MutableList<MediaItem>> {
+        Log.d(TAG, "onAddMediaItems() from ${controller.packageName}, size=${mediaItems.size}")
+
+        val resolved = mediaItems.map { resolveVoiceRequest(it) }.toMutableList()
+
+        resolved.forEachIndexed { index, item ->
+            Log.d(
+                TAG,
+                "resolved[$index]: id=${item.mediaId}, title=${item.mediaMetadata.title}, uri=${item.localConfiguration?.uri}"
+            )
+        }
+
+        return Futures.immediateFuture(resolved)
+    }
+
+    override fun onSetMediaItems(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        mediaItems: MutableList<MediaItem>,
+        startIndex: Int,
+        startPositionMs: Long
+    ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+        Log.d(
+            TAG,
+            "onSetMediaItems() from ${controller.packageName}, size=${mediaItems.size}, startIndex=$startIndex"
+        )
+
+        val resolved = mediaItems.map { resolveVoiceRequest(it) }.toMutableList()
+
+        return Futures.immediateFuture(
+            MediaSession.MediaItemsWithStartPosition(
+                resolved,
+                if (startIndex >= 0) startIndex else 0,
+                startPositionMs
+            )
+        )
+    }
+
     override fun onGetLibraryRoot(
         session: MediaLibraryService.MediaLibrarySession,
         browser: MediaSession.ControllerInfo,
         params: MediaLibraryService.LibraryParams?
     ): ListenableFuture<LibraryResult<MediaItem>> {
+        Log.d(TAG, "onGetLibraryRoot() from ${browser.packageName}")
+
         val root = MediaItem.Builder()
             .setMediaId("root")
             .setMediaMetadata(
                 MediaMetadata.Builder()
-                    .setTitle("My Media")
+                    .setTitle("Hust Media")
                     .setIsBrowsable(true)
                     .setIsPlayable(false)
                     .build()
             )
             .build()
+
         return Futures.immediateFuture(LibraryResult.ofItem(root, params))
     }
 
@@ -133,48 +219,35 @@ class AutomotiveLibraryCallback : MediaLibraryService.MediaLibrarySession.Callba
         pageSize: Int,
         params: MediaLibraryService.LibraryParams?
     ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
-        val children = when (parentId) {
-            "root" -> listOf(
-                MediaItem.Builder()
-                    .setMediaId("songs")
-                    .setMediaMetadata(
-                        MediaMetadata.Builder()
-                            .setTitle("Songs")
-                            .setIsBrowsable(true)
-                            .setIsPlayable(false)
-                            .build()
-                    ).build()
-            )
-            "songs" -> items
-            else -> emptyList()
-        }
+        Log.d(TAG, "onGetChildren() from ${browser.packageName}, parentId=$parentId")
+
+        val children = if (parentId == "root") items else emptyList()
         return Futures.immediateFuture(LibraryResult.ofItemList(ImmutableList.copyOf(children), params))
     }
 
-    override fun onAddMediaItems(
-        session: MediaSession,
-        controller: MediaSession.ControllerInfo,
-        mediaItems: MutableList<MediaItem>
-    ): ListenableFuture<MutableList<MediaItem>> {
-        val resolved = mediaItems.map { item ->
-            val uri = tracks[item.mediaId] //Map mediaID -> uri - Item hiển thị -> item để phát
-            val art = artworks[item.mediaId]
-            if (uri != null) {
-                item.buildUpon()
-                    .setUri(uri)
-                    .setMediaMetadata(
-                        item.mediaMetadata.buildUpon()
-                            .setArtworkUri(art) // Gắn ảnh bìa khi phát
-                            .setIsPlayable(true)
-                            .setIsBrowsable(false)
-                            .build()
-                    )
-                    .build()
-            } else {
-                item
-            }
-        }.toMutableList()
-        return Futures.immediateFuture(resolved)
+    override fun onSearch(
+        session: MediaLibraryService.MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        query: String,
+        params: MediaLibraryService.LibraryParams?
+    ): ListenableFuture<LibraryResult<Void>> {
+        val matches = findSongs(query)
+        Log.d(TAG, "onSearch() from ${browser.packageName}, query=[$query], count=${matches.size}")
+        session.notifySearchResultChanged(browser, query, matches.size, params)
+        return Futures.immediateFuture(LibraryResult.ofVoid())
+    }
+
+    override fun onGetSearchResult(
+        session: MediaLibraryService.MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        query: String,
+        page: Int,
+        pageSize: Int,
+        params: MediaLibraryService.LibraryParams?
+    ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+        val matches = findSongs(query)
+        Log.d(TAG, "onGetSearchResult() from ${browser.packageName}, query=[$query], count=${matches.size}")
+        return Futures.immediateFuture(LibraryResult.ofItemList(ImmutableList.copyOf(matches), params))
     }
 
     override fun onGetItem(
@@ -182,14 +255,16 @@ class AutomotiveLibraryCallback : MediaLibraryService.MediaLibrarySession.Callba
         browser: MediaSession.ControllerInfo,
         mediaId: String
     ): ListenableFuture<LibraryResult<MediaItem>> {
-        val item = items.firstOrNull { it.mediaId == mediaId }
-        return Futures.immediateFuture(
-            if (item != null) {
-                LibraryResult.ofItem(item, null)
-            } else {
-                LibraryResult.ofError(SessionError(SessionError.ERROR_BAD_VALUE, "Unknown mediaId: $mediaId"))
-            }
-        )
+        Log.d(TAG, "onGetItem() from ${browser.packageName}, mediaId=$mediaId")
+
+        val item = items.find { it.mediaId == mediaId }
+        return if (item != null) {
+            Futures.immediateFuture(LibraryResult.ofItem(item, null))
+        } else {
+            Futures.immediateFuture(
+                LibraryResult.ofError(SessionError(SessionError.ERROR_BAD_VALUE, "Media not found"))
+            )
+        }
     }
 
     override fun onSubscribe(
@@ -198,6 +273,7 @@ class AutomotiveLibraryCallback : MediaLibraryService.MediaLibrarySession.Callba
         parentId: String,
         params: MediaLibraryService.LibraryParams?
     ): ListenableFuture<LibraryResult<Void>> {
-        return Futures.immediateFuture(LibraryResult.ofVoid(null))
+        Log.d(TAG, "onSubscribe() from ${browser.packageName}, parentId=$parentId")
+        return Futures.immediateFuture(LibraryResult.ofVoid())
     }
 }
