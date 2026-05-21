@@ -29,5 +29,4 @@ class MyMediaService : MediaLibraryService() {
         player.release()
         super.onDestroy()
     }
-
 }
