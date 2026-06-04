@@ -82,6 +82,12 @@ class AutomotiveLibraryCallback : MediaLibraryService.MediaLibrarySession.Callba
         createMediaItem("track_11", "As Long As You Love Me", "Justin Bieber", uri11, art11)
     )
 
+    private fun removeAccents(src: String): String {
+        val temp = java.text.Normalizer.normalize(src, java.text.Normalizer.Form.NFD)
+        val pattern = java.util.regex.Pattern.compile("\\p{InCombiningDiacriticalMarks}+")
+        return pattern.matcher(temp).replaceAll("").replace('đ', 'd').replace('Đ', 'D')
+    }
+
     private fun normalizeQuery(query: String?): String {
         return query.orEmpty()
             .lowercase()
@@ -97,19 +103,33 @@ class AutomotiveLibraryCallback : MediaLibraryService.MediaLibrarySession.Callba
     }
 
     private fun findSongs(query: String?): List<MediaItem> {
-        val normalized = normalizeQuery(query)
+        val normalized = removeAccents(normalizeQuery(query)).lowercase()
         Log.d(TAG, "findSongs(): raw=[$query], normalized=[$normalized]")
 
         if (normalized.isBlank()) return emptyList()
 
+        // 1. Title Exact Match
+        val exactTitle = items.filter {
+            val title = removeAccents(it.mediaMetadata.title?.toString() ?: "").lowercase()
+            title == normalized
+        }
+        if (exactTitle.isNotEmpty()) return exactTitle
+
+        // 2. Title Substring / Contains Match (both ways)
         val titleMatches = items.filter {
-            it.mediaMetadata.title?.toString()?.lowercase()?.contains(normalized) == true
+            val title = removeAccents(it.mediaMetadata.title?.toString() ?: "").lowercase()
+            title.contains(normalized) || normalized.contains(title)
         }
         if (titleMatches.isNotEmpty()) return titleMatches
 
-        return items.filter {
-            it.mediaMetadata.artist?.toString()?.lowercase()?.contains(normalized) == true
+        // 3. Artist Matches (both ways)
+        val artistMatches = items.filter {
+            val artist = removeAccents(it.mediaMetadata.artist?.toString() ?: "").lowercase()
+            artist.contains(normalized) || normalized.contains(artist)
         }
+        if (artistMatches.isNotEmpty()) return artistMatches
+
+        return emptyList()
     }
 
     private fun defaultItem(): MediaItem {

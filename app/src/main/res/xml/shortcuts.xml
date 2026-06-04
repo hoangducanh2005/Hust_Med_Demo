@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Khai báo năng lực tìm kiếm và phát nhạc bằng giọng nói với Google Assistant -->
+    <capability android:name="actions.intent.PLAY_FROM_SEARCH">
+        <intent
+            android:action="android.media.action.MEDIA_PLAY_FROM_SEARCH"
+            android:targetPackage="com.example.hust_med_demo"
+            android:targetClass="com.example.hust_med_demo.VoiceTestActivity">
+            <!-- Bản đồ tham số truy vấn tìm kiếm giọng nói -->
+            <parameter
+                android:name="query"
+                android:key="query"/>
+        </intent>
+    </capability>
+</shortcuts>
