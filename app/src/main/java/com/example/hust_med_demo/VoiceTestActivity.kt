@@ -1,11 +1,12 @@
 package com.example.hust_med_demo
 
 import android.Manifest
+import android.app.SearchManager
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
+import android.provider.MediaStore
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -15,6 +16,10 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.MoreExecutors
 import java.util.Locale
 
 private const val TAG = "HUST_VOICE_DEBUG"
@@ -23,16 +28,18 @@ private const val REQUEST_RECORD_AUDIO_PERMISSION = 200
 class VoiceTestActivity : AppCompatActivity() {
 
     private var speechRecognizer: SpeechRecognizer? = null
+    private var controller: MediaController? = null
+
     private lateinit var statusText: TextView
     private lateinit var resultText: TextView
     private lateinit var btnListen: Button
-    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "--- HUST VOICE: onCreate ---")
-        
+
         setupSimpleUI()
+        initController()
 
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             Log.e(TAG, "Speech Recognition is NOT available on this device")
@@ -41,7 +48,14 @@ class VoiceTestActivity : AppCompatActivity() {
             return
         }
 
-        checkAndRequestPermissions()
+        checkPermissions()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        Log.d(TAG, "onNewIntent: action=${intent.action}")
+        handleSearchIntent(intent)
     }
 
     private fun setupSimpleUI() {
@@ -51,21 +65,21 @@ class VoiceTestActivity : AppCompatActivity() {
             gravity = android.view.Gravity.CENTER_HORIZONTAL
         }
 
-        statusText = TextView(this).apply { 
-            text = "Status: Ready"
+        statusText = TextView(this).apply {
+            text = "Status: Connecting..."
             setPadding(0, 20, 0, 20)
         }
-        
+
         btnListen = Button(this).apply {
-            text = "START LISTENING (ENGLISH)"
-            setOnClickListener { 
-                Log.d(TAG, "Listen button clicked")
-                handleStartClick()
+            text = "START VOICE COMMAND"
+            setOnClickListener {
+                Log.d(TAG, "Button clicked: starting fresh listening session")
+                startListening()
             }
         }
 
-        resultText = TextView(this).apply { 
-            text = "Recognition result will appear here"
+        resultText = TextView(this).apply {
+            text = "Try saying: 'play Havana'"
             textSize = 20f
             setPadding(0, 40, 0, 0)
             setTextColor(android.graphics.Color.BLUE)
@@ -77,36 +91,29 @@ class VoiceTestActivity : AppCompatActivity() {
         setContentView(layout)
     }
 
-    private fun cleanupRecognizer() {
-        Log.d(TAG, "Cleaning up existing recognizer...")
-        try {
-            speechRecognizer?.apply {
-                stopListening()
-                cancel()
-                destroy()
+    private fun initController() {
+        val sessionToken = SessionToken(this, ComponentName(this, MyMediaService::class.java))
+        val controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
+
+        controllerFuture.addListener({
+            try {
+                controller = controllerFuture.get()
+                Log.d(TAG, "MediaController connected successfully")
+                statusText.text = "Status: Connected & Ready"
+                handleSearchIntent(intent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to connect MediaController: ${e.message}")
+                statusText.text = "Status: Connection Failed"
             }
-            speechRecognizer = null
-        } catch (e: Exception) {
-            Log.e(TAG, "Error during cleanup: ${e.message}")
-        }
+        }, MoreExecutors.directExecutor())
     }
 
-    private fun handleStartClick() {
-        btnListen.isEnabled = false
-        statusText.text = "Status: Initializing..."
-        
-        cleanupRecognizer()
-        
-        // Delay 150ms trước khi tạo mới để tránh lỗi 11 (Server Disconnected)
-        mainHandler.postDelayed({
-            initAndStartListening()
-            btnListen.isEnabled = true
-        }, 150)
-    }
+    private fun initSpeechRecognizer() {
+        // GIẢI PHÓNG phiên cũ để dọn dẹp tài nguyên
+        speechRecognizer?.destroy()
 
-    private fun initAndStartListening() {
-        Log.d(TAG, "Creating new recognizer instance...")
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(applicationContext)
+        Log.d(TAG, "Creating fresh SpeechRecognizer instance")
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
         speechRecognizer?.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
                 Log.d(TAG, "onReadyForSpeech")
@@ -117,7 +124,12 @@ class VoiceTestActivity : AppCompatActivity() {
                 Log.d(TAG, "onBeginningOfSpeech")
             }
 
-            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onRmsChanged(rmsdB: Float) {
+                if (rmsdB > 2f) {
+                    statusText.text = "Status: Listening... 🎙️ (${rmsdB.toInt()})"
+                }
+            }
+
             override fun onBufferReceived(buffer: ByteArray?) {}
 
             override fun onEndOfSpeech() {
@@ -128,25 +140,38 @@ class VoiceTestActivity : AppCompatActivity() {
             override fun onError(error: Int) {
                 val errorMsg = when (error) {
                     SpeechRecognizer.ERROR_NETWORK -> "Network Error (2)"
-                    SpeechRecognizer.ERROR_CLIENT -> "Client Error (5)"
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Timeout (6)"
-                    SpeechRecognizer.ERROR_NO_MATCH -> "No match (7)"
+                    SpeechRecognizer.ERROR_CLIENT -> "Client Error (5) - Re-click to retry"
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Timeout (6) - No voice heard"
+                    SpeechRecognizer.ERROR_NO_MATCH -> "No match (7) - Speak clearer"
                     SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Busy (8)"
                     11 -> "Server Disconnected (11)"
                     else -> "Error code: $error"
                 }
-                Log.e(TAG, "SpeechRecognizer Error: $errorMsg")
+                Log.e(TAG, "SpeechRecognizer Error: $errorMsg ($error)")
                 statusText.text = "Status: $errorMsg"
+
+                // Hủy instance khi lỗi để đảm bảo lần tới là phiên sạch
+                if (error == 5 || error == 8) {
+                    speechRecognizer?.destroy()
+                    speechRecognizer = null
+                }
             }
 
             override fun onResults(results: Bundle?) {
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (!matches.isNullOrEmpty()) {
-                    val result = matches[0]
-                    Log.i(TAG, "RESULT: $result")
-                    resultText.text = result
-                    statusText.text = "Status: Success!"
+                    val recognizedText = matches[0]
+                    Log.i(TAG, "RESULT: $recognizedText")
+                    resultText.text = recognizedText
+
+                    val searchIntent = Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).apply {
+                        putExtra(SearchManager.QUERY, recognizedText)
+                        putExtra(MediaStore.EXTRA_MEDIA_TITLE, recognizedText)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    onNewIntent(searchIntent)
                 }
+                statusText.text = "Status: Ready"
             }
 
             override fun onPartialResults(partialResults: Bundle?) {
@@ -158,19 +183,18 @@ class VoiceTestActivity : AppCompatActivity() {
 
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
+    }
+
+    private fun startListening() {
+        // KHỞI TẠO LẠI mỗi khi nhấn nút để tránh treo dịch vụ hệ thống
+        initSpeechRecognizer()
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US.toLanguageTag())
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
-            
-            // Cấu hình tăng độ nhạy và thời gian chờ để tránh Error 7
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
         }
-        
-        Log.d(TAG, "Calling startListening")
+
         try {
             speechRecognizer?.startListening(intent)
         } catch (e: Exception) {
@@ -179,14 +203,46 @@ class VoiceTestActivity : AppCompatActivity() {
         }
     }
 
-    private fun checkAndRequestPermissions() {
+    private fun handleSearchIntent(intent: Intent?) {
+        if (intent == null || controller == null) return
+        val isPlayFromSearch = intent.action == MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH
+        val isSearch = intent.action == Intent.ACTION_SEARCH
+
+        if (isPlayFromSearch || isSearch) {
+            val query = intent.getStringExtra(SearchManager.QUERY)
+                ?: intent.getStringExtra(MediaStore.EXTRA_MEDIA_TITLE)
+                ?: ""
+
+            if (query.isBlank()) return
+
+            Log.d(TAG, "Sending query [$query] to MediaSession")
+            val item = MediaItem.Builder()
+                .setMediaId("voice_request")
+                .setRequestMetadata(MediaItem.RequestMetadata.Builder().setSearchQuery(query).build())
+                .build()
+
+            try {
+                controller?.setMediaItem(item)
+                controller?.prepare()
+                controller?.play()
+                statusText.text = "Playing: $query"
+            } catch (e: Exception) {
+                Log.e(TAG, "Player error: ${e.message}")
+            }
+        }
+    }
+
+    private fun checkPermissions(): Boolean {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO_PERMISSION)
+            return false
         }
+        return true
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        cleanupRecognizer()
+        speechRecognizer?.destroy()
+        controller?.release()
     }
 }

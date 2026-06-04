@@ -89,17 +89,24 @@ class AutomotiveLibraryCallback : MediaLibraryService.MediaLibrarySession.Callba
     }
 
     private fun normalizeQuery(query: String?): String {
-        return query.orEmpty()
-            .lowercase()
-            .replace("hust_med_demo", "")
-            .replace("hust med demo", "")
-            .replace("hust media", "")
-            .replace("play", "")
-            .replace("listen to", "")
-            .replace("song", "")
-            .replace("music", "")
-            .replace("on", "")
-            .trim()
+        var clean = query.orEmpty().lowercase()
+        // Loại bỏ các ký tự đặc biệt, dấu câu thường gặp trong tiếng Anh
+        clean = clean.replace(Regex("[.,?!_/\\\\-]"), " ")
+        
+        // Loại bỏ các từ khóa thừa trong khẩu lệnh tiếng Anh
+        val stopwords = listOf(
+            "hust_med_demo", "hust med demo", "hust media", 
+            "play music", "play song", "play", 
+            "listen to music", "listen to song", "listen to", "listen",
+            "search for", "search", "song", "music", "on", "the"
+        )
+        
+        for (word in stopwords) {
+            clean = clean.replace(word, "")
+        }
+        
+        // Làm sạch khoảng trắng thừa
+        return clean.replace(Regex("\\s+"), " ").trim()
     }
 
     private fun findSongs(query: String?): List<MediaItem> {
@@ -108,21 +115,21 @@ class AutomotiveLibraryCallback : MediaLibraryService.MediaLibrarySession.Callba
 
         if (normalized.isBlank()) return emptyList()
 
-        // 1. Title Exact Match
+        // 1. So khớp chính xác hoàn toàn tiêu đề (Tiếng Anh chuẩn)
         val exactTitle = items.filter {
             val title = removeAccents(it.mediaMetadata.title?.toString() ?: "").lowercase()
             title == normalized
         }
         if (exactTitle.isNotEmpty()) return exactTitle
 
-        // 2. Title Substring / Contains Match (both ways)
+        // 2. So khớp chứa từ khóa tiêu đề (Ví dụ: "baby" trong "Baby" hoặc ngược lại)
         val titleMatches = items.filter {
             val title = removeAccents(it.mediaMetadata.title?.toString() ?: "").lowercase()
             title.contains(normalized) || normalized.contains(title)
         }
         if (titleMatches.isNotEmpty()) return titleMatches
 
-        // 3. Artist Matches (both ways)
+        // 3. So khớp tên ca sĩ
         val artistMatches = items.filter {
             val artist = removeAccents(it.mediaMetadata.artist?.toString() ?: "").lowercase()
             artist.contains(normalized) || normalized.contains(artist)
